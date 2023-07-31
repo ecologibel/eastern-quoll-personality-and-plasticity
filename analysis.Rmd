@@ -13,6 +13,8 @@ output:
     highlight: pygments
 editor_options: 
   chunk_output_type: console
+  
+knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_file = file.path(dirname(inputFile), 'tutorial.html')) })
 ---
 
 ```{r setup, include=FALSE}
@@ -30,7 +32,7 @@ Here we describe the analyses we conducted for our article [Wilson *et al.* (202
 First, we installed the [pacman Package Management Tool](https://cran.r-project.org/web/packages/pacman/index.html), which allows us to install and load subsequent packages in a condensed and efficient way. 
 
 ```{r, eval=FALSE}
-#install.packages("pacman")
+install.packages("pacman")
 ```
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
