@@ -1,0 +1,1074 @@
+---
+title: "Personality and plasticity predicts post-release performance in a reintroduced mesopredator"
+author: "Wilson B A, Evans M J, Gordon I J, Banks S C, Batson W G, Wimpenny C, Newport J, & Manning A D"
+date: "31 July 2023"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+    toc_float:
+      collapsed: true
+    theme: cerulean
+    highlight: pygments
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Background**
+
+Personality can play a crucial role in the survival and dispersal of reintroduced animals. In 2017, we reintroduced a cohort of female-only eastern quolls (*Dasyurus viverrinus*) to a [conservation-fenced haven](https://www.mulligansflat.org.au/) in the Australian Capital Territory, and conducted behavioural assays on each animal prior to their release. We aimed to determine whether personality and plasticity of these animals could predict their post-release performance.
+
+Here we describe the analyses we conducted for our article [Wilson *et al.* (2022) Personality and plasticity predicts post-release performance in a reintroduced mesopredator](https://doi.org/10.1016/j.anbehav.2022.02.019), published in Animal Behaviour.
+
+# **Data preparation**
+
+First, we installed the [pacman Package Management Tool](https://cran.r-project.org/web/packages/pacman/index.html), which allows us to install and load subsequent packages in a condensed and efficient way. 
+
+```{r, eval=FALSE}
+#install.packages("pacman")
+```
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Install and load required packages
+pacman::p_load(adehabitatHR, brglm, corrplot, factoextra, FactoMineR, ggplot2, 
+               ggpubr, gtools, lme4, magrittr, raster, RColorBrewer, readr,
+               readxl, rstudioapi, tidyverse)
+```
+
+We also set the working directly to where this R markdown is saved using the `rstudioapi` package.
+
+```{r}
+# Set the working directory to where this markdown is saved
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+## Behavioural assays
+
+### Scale variables
+
+During our behavioural assays of 6 captive-bred and 7 wild-caught eastern quolls, we measured the following behavioural responses:
+
+  1. Latency to `emerge` (min)
+  2. Latency to reach `food` (min)
+  3. Time spent `active`
+  4. Time spent `vigil`ant
+  5. Time spent `hid`den
+  6. Time spent exposed (`out`) 
+  7. Giving-up density (%, `gud`)
+  8. Number of camera triggers (*n*):
+      - Total `trig`gers (not used)
+      - Triggers in far half of enclosure (`trigpass`)
+
+Because the enclosures were open to the elements, we needed to account for environmental heteroegeneity by adjusting our behavioural responses to these covariates, with values collected around the time of the assay (18:00 or 21:00):
+
+  1. Ambient `temp`erature (°C)
+  2. `precip`itation (mm)
+  3. Relative `humid`ity (%)
+  4. Mean `wind` speed
+  5. `press`ure (hPa)
+  6. `moon` phase (%)
+  
+Firstly, we needed to scale our behavioural and environmental variables. We installed and loaded
+
+```{r}
+assay <- read_excel("eastern quoll behaviour and post-release data.xlsx",
+                    sheet="assay") %>%
+  mutate_at(c(11, 14:20, 26,28, 30:32, 34, 36:37), 
+            funs(c(scale(.))))
+write.csv(assay, "assays.csv")
+```
+
+### Predict behavioural responses
+
+Here, we modelled each animal's behavioural response (`emerge`, `food`, `active`, `vigil`, `out`, `hid`, `gud`, and `trigpass`) including environmental covariates, and predict their responses after accounting for these covariates.
+
+We then extracted each model's intercept (personality) and slope (plasticity) coefficients for analyses (i.e., the behavioural reaction norm approach, [Dingemanse *et al*. 2010](https://doi.org/10.1016/j.tree.2009.07.013)).
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create a list of dependent behavioural variables
+dependent <- c("emerge","food","active","vigil",
+               "out","hid","gud","trigpass")
+
+# Define the levels in an object
+quolls <- levels(factor(assay$individual))
+
+# Create a blank dataframe with four columns
+coefficients <- data.frame(individual=NULL, intercept=NULL, 
+                           slope=NULL, variable=NULL)
+
+# Loop to extract the intercept and slope of each behavioural response
+for(v in 1:NROW(dependent)) {
+  for(i in 1:NROW(quolls)){
+    individual <- quolls[i]
+    variable <- dependent[v]
+    mod <- lm(eval(as.name(paste0(variable))) ~ 
+                observation + temp + precip + humid + 
+                wind + press + moon + cue + cycle + session,
+              data=subset(assay, individual==quolls[i]))
+    i <- coef(mod)[1]
+    s <- coef(mod)[2]
+    results <- data.frame(cbind(individual, i, s, variable))
+    coefficients <- rbind(coefficients, results)
+  }
+}
+
+# Convert the df to wide format
+coefficients <- reshape(coefficients, idvar="individual", 
+                        timevar="variable", direction="wide")
+
+# Define names of the coefficients
+names(coefficients) <- gsub("\\.", "_", names(coefficients))
+
+# Remove duplicated coefficients
+coefficients <- coefficients[ , !duplicated(colnames(coefficients))]
+
+# Join behavioural df with post-release df
+post <- read_excel("eastern quoll behaviour and post-release data.xlsx",
+                   sheet="postrelease") %>%
+  left_join(coefficients, by="individual")
+
+# Remove duplicated column names
+post <- post[ , !duplicated(colnames(post))]
+
+# Write to csv file
+write_csv(post, "postrelease_performance.csv")
+```
+
+## Post-release data 
+
+Here we calculate three of the dispersal-related post-release responses for each animal in the first 42 days post-release: `first_night`, `mean_dist`, and `hr95`.
+
+### First night distance
+
+Firstly, we calculate the distance each animal travelled between its release site and its first daytime den.
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Read in post-release data
+post <- read_csv("postrelease_performance.csv", col_types=cols())
+
+# Create release coordinates dataframe
+rcoord <- data.frame(post$release_easting, post$release_northing)
+
+# Create first night den coordinates
+fcoord <- data.frame(post$first_night_easting, post$first_night_northing)
+
+# Measure distance between release and first night den coordinates
+post$first_dist <- raster::pointDistance(rcoord, fcoord, lonlat=FALSE)
+
+# Create column names
+first_night <- post[c("individual", "first_dist")]
+
+# Join column names with post-release responses
+post <- left_join(first_night, post, by="individual")
+
+# Remove duplicated column names
+post <- post[ , !duplicated(colnames(post))]
+
+# Write to csv file
+write.csv(post, "postrelease_indices.csv", row.names=FALSE)
+```
+
+### Mean distance between dens
+
+Next, we calculated the mean distance between each animal's dens (as per [Wilson et al 2020](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0234455), the code for which is available in [ANU Data Commons](https://datacommons.anu.edu.au/DataCommons/rest/display/anudc:6063?layout=def:display)).
+
+### Home range
+
+Finally, we calculated home range as [95% MCPs](https://bit.ly/3lYGxxZ).
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Read in den data
+den <- read_excel("eastern quoll behaviour and post-release data.xlsx",
+                  sheet="den")
+
+# Define column names
+den <- den[, c("Individual", "Easting", "Northing")]
+
+# Read in post-release data
+post <- read.csv("postrelease_indices.csv")
+
+# Create a den coordinates df
+coordinates(den) <- c("Easting", "Northing")
+
+# Define the den coordinates projection (warnings okay)
+proj4string(den) <- CRS("+proj=utm +zone=55 +ellps=WGS84 +units=m +no_defs")
+
+# Calculate MCP per individual (warnings okay)
+hr95 <- data.frame(mcp(den, percent=95))
+
+# Define the column name for the first row
+names(hr95)[1] <- "individual"
+
+# Join the post-release df to the home range df
+post <- left_join(post, hr95, by="individual") %>%
+  mutate(hr95=area)
+
+# Write to csv file
+write_csv(post, "postrelease_indices.csv")
+```
+
+# **Model behaviour by observation number**
+
+## Models
+
+Here we modelled each of the behavioural responses against observation number, and extracted the *p*-values for inclusion in later plots.
+
+```{r, warning=FALSE, message=FALSE}
+# Read in behavioural assay data
+assay <- read.csv("assays.csv")
+
+# Create a list of behavioural measure names
+dependent <- c("emerge","food","active","vigil", "out","hid","gud","trigpass")
+
+# Create a df with two columns
+pvalues <- data.frame(pvalue=NULL, variable=NULL)
+
+# Generate a linear model of the food response by obervation number
+summary(lm(food ~ observation, data=assay, na.action="na.fail"))
+
+for(v in 1:NROW(dependent)) {
+  variable <- dependent[v]
+  mod <- lm(eval(as.name(paste0(variable))) ~ observation, 
+               data=assay, na.action="na.fail")
+  pvalue <- as.numeric(coef(summary(mod))[8])
+  rsquared <- summary(mod)$r.squared
+  fstatistic <- summary(mod)$fstatistic
+  results <- data.frame(cbind(variable, fstatistic, rsquared, pvalue))
+  pvalues <- rbind(pvalues, results)
+  pvalues_observation <- subset(pvalues, fstatistic!=1 & fstatistic!=222)
+}
+pvalues_observation
+```
+
+## Scatterplots 
+
+Here we plot each behavioural response against observation number to visualise the change in responses over the assay period.
+
+```{r, warning=FALSE, message=FALSE}
+# Read in behavioural assay data
+assay <- read_excel("eastern quoll behaviour and post-release data.xlsx",
+                    sheet="assay")
+
+# Create list of x-axis labels
+xs <- c(14, 14, 14, 14, 14, 14, 14, 14)
+
+# Create list of y-axis labels
+ys <- c(110, 110, 19, 9, 26, 95, 90, 110)
+
+# Create list of behavioural measure names
+variables <- c("emerge", "food", "active", "vigil", 
+               "out", "hid", "gud", "trigpass")
+
+# Create list of full behavioural measure labels
+names <- c("Latency to emerge (min)", "Latency to reach food (min)",
+           "Time spent active (s)", "Time spent vigilant (s)",
+          "Time spent exposed (s)", "Time spent hidden (s)",
+          "Giving-up density (%)", "Number of camera triggers")
+
+# Create list of p-values for each of the 8 measures
+labels <- c("p < 0.01", "p = 0.01", "p = 0.954", "p < 0.01",
+          "p = 0.306", "p = 0.306", "p < 0.01", "p = 0.307")
+
+# Loop to plot each of the 8 behavioural measures
+figs <- list()
+for (i in 1:NROW(variables)) {
+  loop_var = as.name(variables[i])
+  figs[[i]] <- ggplot(data=assay, mapping=aes_string(x="observation",
+                                                     y=loop_var)) +
+    geom_point(alpha=0.25) +
+    geom_smooth(method="lm", color="black", fill="grey") +
+    scale_x_continuous(name="Assay number") +
+    scale_y_continuous(name=names[i]) +
+    theme(panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(), 
+          panel.background=element_blank(),
+          panel.border=element_blank(), 
+          axis.line.x=element_line(color="grey"),
+          axis.line.y=element_line(color="grey")) +
+    annotate("text", x=xs[i], y=ys[i], label=labels[i])
+}
+
+# Arrange the eight panels in a single plot
+regression <- ggarrange(plotlist=figs, heights=c(3,3,3,3), widths=c(3,3,3,3), 
+                        font.label=list(size=10, face="bold", color="black"), 
+                        ncol=4, nrow=2, label.x=0.89, label.y=0.99, 
+                        hjust=-0.1, vjust=1.5)
+# Display plot
+print(regression)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot to jpeg file
+ggsave(filename="regressions.jpeg", regression, 
+       width=300, height=150, units="mm")
+```
+
+# **Correlation analysis**
+
+Here we conducted a correlation analysis to compare each behavioural measure to every other behavioural measure, and visualise this in a correlogram.
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Read in post-release data
+cor <- read.csv("postrelease_indices.csv") %>%
+  subset(individual!="EQ25") %>%
+  # Extract the intercept and slope for all behavioural responses
+  dplyr::select(23:38)
+
+# Generate a correlation matrix
+cor <- cor(cor)
+
+# Loop to calculate whether each correlation is significant
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat<- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+```
+
+```{r, warning=FALSE}
+# Generate a correlation matrix
+p.mat <- cor.mtest(cor)
+
+# Define colours for correlogram
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", 
+                          "#77AADD", "#4477AA"))
+
+# Plot the correlation matrix
+corrplot(cor, method="color", col=col(200), type="upper", 
+         addCoef.col="black", tl.col="black", tl.srt=45, p.mat=p.mat, 
+         sig.level=0.01, insig="blank", diag=FALSE, number.cex=0.6)
+```
+
+Our correlation analysis revealed that the following behavioural measures were significant correlated (R > 0.7) with:
+
+  - Time spent `out` (or exposed)
+  - Time spent `active` (time spent `out` - time spent `vigil`),
+  - Time spent `hid`den (total time - time spent `active` - time spent `vigil`), and
+  - Number of camera triggers in far half of pen (`trigpass`).
+
+Time spent `out` created the most inter-individual variation, so we dropped `active`, `hid`, and `trigpass` from subsequent analysis.
+
+# **Principle components analysis**
+
+Next, we created PCA variables for the intercept and slope of each remaining behavioural response (`emerge`, `food`, `out`, `vigil`,and `gud`) by extracting the first dimension coordinates for each animal.
+
+"Rather than inferring a particular trait to each of our measures, for clarity we chose to place our results in the context of the proactive (bolder, more exploratory, social) and reactive (shy, less, antisocial) syndrome (Koolhaas et al., 1999; Sih et al., 2004). 
+
+We characterized proactive individuals as those with low time spent vigilant, low latency to reach food or emerge, high time spent exposed and high giving-up density, and reactive individuals as those with high time spent vigilant, high latency to reach food or emerge, low time spent exposed and low giving-up density. These were also reflected in the choice of behavioural measures to be included in each of the two PC measures." [Wilson *et al*. (2022)](https://doi.org/10.1016/j.anbehav.2022.02.019).
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Read in post-release data
+post <- read.csv("postrelease_indices.csv") %>%
+  # Remove one individual that was not released
+  subset(individual!="EQ25")
+
+# Define names for each of the 13 eastern quolls
+individual <- c('EQ18', 'EQ19', 'EQ20', 'EQ21', 'EQ22', 
+                'EQ23', 'EQ24', 'EQ26', 'EQ27', 'EQ28', 
+                'EQ29', 'EQ30', 'EQ31')
+```
+
+  1. Extract first dimension value of proactive PCA for personality (intercept) for each animal.
+
+```{r, warning=FALSE}
+# Print PCA graph for behaviours contributing to proactive PCA intercept
+summary(PCA(post[,c(31, 35)]))
+
+# Extract first dimension value of proactive PCA intercept
+i_pro_pca <- get_pca_ind(PCA(post[,c(31, 35)]))
+i_pro_quoll <- data.frame(individual, i_pro_pca$coord) %>%
+  dplyr::select(1, 2) %>%
+  rename(i_pro_pca=Dim.1)
+```
+
+  2. Extract first dimension value of proactive PCA for plasticity (slope) for each animal.
+
+```{r, warning=FALSE}
+# Print PCA graph for behaviours contributing to proactive PCA slope
+summary(PCA(post[,c(32, 36)]))
+
+# Extract first dimension value of proactive PCA slope
+s_pro_pca <- get_pca_ind(PCA(post[,c(32, 36)]))
+s_pro_quoll <- data.frame(individual, s_pro_pca$coord) %>% 
+  dplyr::select(1, 2) %>%
+  rename(s_pro_pca=Dim.1)
+```
+
+  3. Extract first dimension value of reactive PCA for personality (intercept) for each animal.
+
+```{r, warning=FALSE}
+# Print PCA graph forbehaviours contributing to reactive PCA intercept
+summary(PCA(post[,c(23, 25, 29)]))
+
+# Extract first dimension value of reactive PCA intercept
+i_rea_pca <- get_pca_ind(PCA(post[,c(23, 25, 29)]))
+i_rea_quoll <- data.frame(individual, i_rea_pca$coord) %>% 
+  dplyr::select(1, 2) %>% 
+  rename(i_rea_pca=Dim.1)
+```
+
+  4. Extract first dimension value of reactive PCA for plasticity (slope) for each animal.
+
+```{r, warning=FALSE}
+# Print PCA graph forbehaviours contributing to reactive PCA slope 
+summary(PCA(post[,c(24, 26, 30)]))
+
+# Extract first dimension value of reactive PCA slope
+s_rea_pca <- get_pca_ind(PCA(post[,c(24, 26, 30)]))
+s_rea_quoll <- data.frame(individual, s_rea_pca$coord) %>% 
+  dplyr::select(1, 2) %>% 
+  rename(s_rea_pca=Dim.1)
+```
+
+```{r}
+# Combine the PCA results
+post_pca <- cbind(post, i_pro_quoll, s_pro_quoll, 
+                  i_rea_quoll, s_rea_quoll, by="individual")
+
+# Write to csv file
+write.csv(post_pca, "postrelease_pca.csv")
+```
+
+# **Model behaviour by post-release responses**
+
+Now that we had generated the intercept (personality) and slope (plasticity) values for each of the six behavioural predictors (`emerge`, `food`, `out`, `vigil`, `gud`, and `pca`), we modelled and plotted these against our post-release responses:
+
+  - Survival responses (*n* = 13)
+    1. `fate` (survived or died)
+    2. Post-release `weight` (%)
+    
+  - Dispersal responses (for animals that survived >7 days, *n* = 10, measured over 42 days)
+    3. Number of `dens_used` (*n*)
+    4. `mean_dist`ance travelled between dens per day (m)
+    5. Days spent den sharing (*n*, `den_shared_days`)
+    6. Home range (95% minimum convex polygon, `hr95`)
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Read in post-release data
+post <- read.csv("postrelease_pca.csv")
+
+# Create df removing animals that did not survive >7 days
+dispersal <- subset(post, individual!="EQ20" & 
+                      individual!="EQ29" & 
+                      individual!="EQ30") %>%
+  mutate(hr95=as.numeric(hr95))
+
+# Define column names to be used in later plots
+predictors <- c("emerge","food","vigil","out",
+                "gud","pro_pca","rea_pca")
+
+# Define full behavioural measure labels to be used in plots
+labels <- c("Latency to emerge (min)", 
+            "Latency to reach food (min)",
+            "Time spent vigilant (s)", 
+            "Time spent exposed (s)", 
+            "Giving-up density (%)", 
+            "Proactive PC", 
+            "Reactive PC")
+```
+
+## Fate 
+
+###  Models
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("fate ~ i_",predictors[i]))
+  mod <- brglm(expr, data=post, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <- rbind(plotdat, effect)
+
+  expr = as.formula(paste0("fate ~ s_",predictors[i]))
+  mod <- brglm(expr, data=post, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <- rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat, name!="(Intercept)") %>%
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...z..<0.05, "sig", "nonsig"), 
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC", 
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)",
+                                        "Latency to emerge (min)")))
+```
+
+###  Plot
+
+```{r, warning=FALSE}
+# Create blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate,y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig1 <- plot + ggtitle("Fate") +
+  geom_vline(xintercept=0, linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity",aes(fill=factor(sig), size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        panel.border = element_blank(),
+        axis.line.x = element_line(), 
+        text = element_text(size=10, colour="black"),
+        plot.title = element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y = element_text(angle=0, vjust=0.5, colour="black"),
+        axis.text.x = element_text(angle=0, vjust=0, 
+                                 hjust=0.5, colour="black"),
+        axis.ticks.y = element_blank(), 
+        axis.title.y = element_text(size=12),
+        axis.ticks.x = element_blank(), 
+        axis.title.x = element_blank(),
+        legend.position = "right", 
+        legend.justification = "top",
+        strip.background = element_blank()) +
+  scale_size_manual(values = c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values = c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", 
+         fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig1)
+```
+
+```{r, include=FALSE, eval=FALSE}
+jpeg(filename="fate.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig1)
+dev.off()
+```
+
+## Weight 
+
+###  Models
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("pr_weight ~ i_",predictors[i]))
+  mod <- glm(expr, data=post, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+
+  expr = as.formula(paste0("pr_weight ~ s_",predictors[i]))
+  mod <- glm(expr, data=post, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat, name!="(Intercept)") %>% 
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...t..<0.05, "sig", "nonsig"), 
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC",
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)",
+                                        "Latency to emerge (min)")))
+```
+
+### Plot
+
+```{r, warning=FALSE}
+# Create blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate,y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig2 <- plot + ggtitle("Post-release weight (%)")+
+  geom_vline(xintercept=0,linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity",aes(fill=factor(sig),size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor=element_blank(),
+        panel.background = element_blank(), 
+        panel.border = element_blank(),
+        axis.line.x = element_line(),
+        text = element_text(size=10,colour="black"),
+        plot.title = element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y = element_text(angle=0, vjust=0.5, colour="black"),
+        axis.text.x = element_text(angle=0, vjust=0.5, colour="black"),
+        axis.ticks.y = element_blank(), 
+        axis.title = element_text(size=12),
+        axis.ticks.x = element_blank(), 
+        axis.title.x = element_blank(),
+        legend.position = "right", 
+        legend.justification = "top",
+        strip.background = element_blank()) +
+  scale_size_manual(values=c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values=c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", 
+         fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig2)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot as jpeg
+jpeg(filename="pr_weight.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig2)
+dev.off()
+```
+
+## Number of dens used 
+
+###  Models
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("dens_used ~ i_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+
+  expr = as.formula(paste0("dens_used ~ s_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat,name!="(Intercept)") %>% 
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...t..<0.05, "sig", "nonsig"), 
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC",
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)", 
+                                        "Latency to emerge (min)")))
+```
+
+### Plot
+
+```{r, warning=FALSE}
+# Create blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate,y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig3 <- plot + ggtitle("Number of dens used")+
+  geom_vline(xintercept=0,linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity",aes(fill=factor(sig),size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        panel.background=element_blank(), panel.border=element_blank(),
+        axis.line.x=element_line(), text=element_text(size=10,colour="black"),
+        plot.title=element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y=element_text(angle=0, vjust=0.5,colour="black"),
+        axis.text.x=element_text(angle=0, vjust=0.5,colour="black"),
+        axis.ticks.y=element_blank(), axis.title=element_text(size=12),
+        axis.ticks.x=element_blank(), axis.title.x=element_blank(),
+        legend.position="right", legend.justification="top",
+        strip.background=element_blank()) +
+  scale_size_manual(values=c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values=c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig3)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot as jpeg
+jpeg(filename="dens_used.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig3)
+dev.off()
+```
+
+<br />
+
+## Mean distance between dens 
+
+### Models
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("mean_dist ~ i_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+
+  expr = as.formula(paste0("mean_dist ~ s_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat, name!="(Intercept)") %>% 
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...t..<0.05, "sig", "nonsig"), 
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC",
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)",
+                                        "Latency to emerge (min)")))
+```
+
+### Plot
+
+```{r, warning=FALSE}
+# Create blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate, y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig4 <- plot + ggtitle("Mean distance between dens (m)")+
+  geom_vline(xintercept=0,linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity",aes(fill=factor(sig),size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),
+        panel.background=element_blank(), panel.border=element_blank(),
+        axis.line.x=element_line(), text=element_text(size=10,colour="black"),
+        plot.title=element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y=element_text(angle=0, vjust=0.5,colour="black"),
+        axis.text.x=element_text(angle=0, vjust=0.5,colour="black"),
+        axis.ticks.y=element_blank(), axis.title=element_text(size=12),
+        axis.ticks.x=element_blank(), axis.title.x=element_blank(),
+        legend.position="right", legend.justification="top",
+        strip.background=element_blank()) +
+  scale_size_manual(values=c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values=c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig4)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot as jpeg file
+jpeg(filename="mean_dist.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig4)
+dev.off()
+```
+
+
+## Days spent den sharing
+
+### Models
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("den_shared_days ~ i_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+
+  expr = as.formula(paste0("den_shared_days ~ s_", predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat,name!="(Intercept)") %>% 
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...t..<0.05, "sig", "nonsig"), 
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC",
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)", 
+                                        "Latency to emerge (min)")))
+```
+
+### Plot
+
+```{r, warning=FALSE}
+# Create a blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate, y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig5 <- plot + ggtitle("Days spent den sharing")+
+  geom_vline(xintercept=0,linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity",aes(fill=factor(sig), size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major=element_blank(), 
+        panel.grid.minor=element_blank(),
+        panel.background=element_blank(), 
+        panel.border=element_blank(),
+        axis.line.x=element_line(), 
+        text=element_text(size=10,colour="black"),
+        plot.title=element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y=element_text(angle=0, vjust=0.5, colour="black"),
+        axis.text.x=element_text(angle=0, vjust=0.5, colour="black"),
+        axis.ticks.y=element_blank(), 
+        axis.title=element_text(size=12),
+        axis.ticks.x=element_blank(), 
+        axis.title.x=element_blank(),
+        legend.position="right", 
+        legend.justification="top",
+        strip.background=element_blank()) +
+  scale_size_manual(values=c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values=c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", 
+         fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig5)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot as jpeg file
+jpeg(filename="den_shared_days.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig5)
+dev.off()
+```
+
+## Home range 
+
+### Models
+  
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Create blank df
+plotdat <- data.frame()
+
+# Loop to model each combination of behavioural measure intercept and slope
+for (i in 1:7) {
+  expr = as.formula(paste0("hr95 ~ i_",predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)
+    effect$label <- labels[i]
+    effect$coefficient <- "Personality"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+
+  expr = as.formula(paste0("hr95 ~ s_",predictors[i]))
+  mod <- glm(expr, data=dispersal, na.action="na.fail")
+    effect <- data.frame(summary(mod)$coef)        
+    effect$label <- labels[i]
+    effect$coefficient <- "Plasticity"
+    effect$name <- row.names(effect)
+  plotdat <-rbind(plotdat, effect)
+}
+
+# Define upper confidence interval
+plotdat$upper <- plotdat$Estimate + (1.96*plotdat$Std..Error)
+
+# Define lower confidence interval
+plotdat$lower <- plotdat$Estimate - (1.96*plotdat$Std..Error)
+
+plotdat <- subset(plotdat,name!="(Intercept)") %>% 
+  # Define p-value significance based on alpha 0.05
+  mutate(sig = ifelse(Pr...t..<0.05, "sig", "nonsig"),
+         # Reorder labels
+         label = factor(label, levels=c("Reactive PC", "Proactive PC",
+                                        "Giving-up density (%)", 
+                                        "Time spent vigilant (s)", 
+                                        "Time spent exposed (s)", 
+                                        "Latency to reach food (min)", 
+                                        "Latency to emerge (min)")))
+```
+
+### Plot
+
+```{r, warning=FALSE}
+# Create blank plot
+plot=ggplot(data=plotdat, aes(x=Estimate,y=label, 
+                              xmin=lower, xmax=upper),
+            ylab="", xlab="Effect size") + theme_bw()
+
+# Plot
+fig6 <- plot + ggtitle("Home range (95% MCP)")+
+  geom_vline(xintercept=0, linetype=3) +
+  geom_errorbarh(height=0.25) +
+  geom_point(stat="identity", aes(fill=factor(sig), size=sig), 
+             shape=21, colour="black", alpha=1) +
+  xlab("") + ylab("") +
+  theme(panel.grid.major=element_blank(), 
+        panel.grid.minor=element_blank(),
+        panel.background=element_blank(), 
+        panel.border=element_blank(),
+        axis.line.x=element_line(), 
+        text=element_text(size=10,colour="black"),
+        plot.title=element_text(hjust=0.5, size=10, face="bold"),
+        axis.text.y=element_text(angle=0, vjust=0.5, colour="black"),
+        axis.text.x=element_text(angle=0, vjust=0.5, colour="black"),
+        axis.ticks.y=element_blank(), 
+        axis.title=element_text(size=12),
+        axis.ticks.x=element_blank(), 
+        axis.title.x=element_blank(),
+        legend.position="right", 
+        legend.justification="top",
+        strip.background=element_blank()) +
+  scale_size_manual(values=c("sig"=6, "nonsig"=2)) +
+  scale_fill_manual(values=c("sig"="black", "nonsig"="white"),
+                    name="", guide=guide_legend(reverse=TRUE)) +
+  guides(alpha="none", group="none", colour="none", 
+         fill="none", size="none") +
+  facet_grid(~coefficient, scales="free")
+
+# Display plot
+print(fig6)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot as jpeg file
+jpeg(filename="hr95.jpeg", 
+     width=7000, height=4300, units="px", res=800)
+print(fig6)
+dev.off()
+```
+
+## Composite effect size plot 
+
+Finally, we combine the plots created above into a single composite figure.
+
+```{r, warning=FALSE}
+# Arrange the effect size plots into a single plot
+effects <- ggarrange(fig1, fig2 + rremove("y.text"), 
+                     fig3, fig4 + rremove("y.text"),
+                     fig5, fig6 + rremove("y.text"), 
+                     heights=c(3,3,3), widths=c(4.5,3,3), 
+                     ncol=2, nrow=3, label.x=0.89, label.y=0.99, 
+                     font.label=list(size=10, face="bold", color ="black"),
+                     hjust=-0.1, vjust=1.5)
+
+# Annotate a title to the plot
+effects <- annotate_figure(effects, 
+                           bottom=text_grob("Effect size", hjust=-0.5))
+
+# Display plot
+print(effects)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# Save plot to a jpeg file
+ggsave(filename="effects black.jpeg", effects, width=200, height=225, units="mm")
+```
+
+# Session information
+
+```{r}
+sessionInfo()
+```
