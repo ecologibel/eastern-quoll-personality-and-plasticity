@@ -77,7 +77,7 @@ Firstly, we needed to scale our behavioural and environmental variables. We inst
 
 ```{r}
 # Assign raw data filename to an object
-raw_data_filename <- "raw_data.xlsx"
+raw_data_filename <- "data.xlsx"
 
 # Read in behavioural assay data
 assay <- read_excel(raw_data_filename, sheet="assay") %>%
