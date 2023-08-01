@@ -1,7 +1,7 @@
 ---
 title: "Personality and plasticity predicts post-release performance in a reintroduced mesopredator"
 author: "Wilson B A, Evans M J, Gordon I J, Banks S C, Batson W G, Wimpenny C, Newport J, & Manning A D"
-date: "31 July 2023"
+date: "1 August 2023"
 output:
   html_document:
     toc: true
@@ -77,15 +77,15 @@ Because the enclosures were open to the elements, we needed to account for envir
   
 Firstly, we needed to scale our behavioural and environmental variables. We installed and loaded
 
-```{r}
+```{r,  warning=FALSE, message=FALSE}
 # Assign raw data filename to an object
-raw_data_filename <- "data.xlsx"
+raw_data <- "data.xlsx"
 
 # Read in behavioural assay data
-assay <- read_excel(raw_data_filename, sheet="assay") %>%
+assay <- read_excel(raw_data, sheet="behavioural assays") %>%
   mutate_at(c(11, 14:20, 26,28, 30:32, 34, 36:37), 
             funs(c(scale(.))))
-write.csv(assay, "assays.csv")
+write.csv(assay, "behavioural assays.csv")
 ```
 
 ### Predict behavioural responses
@@ -133,7 +133,7 @@ names(coefficients) <- gsub("\\.", "_", names(coefficients))
 coefficients <- coefficients[ , !duplicated(colnames(coefficients))]
 
 # Join behavioural df with post-release df
-post <- read_excel(raw_data_filename, sheet="postrelease") %>%
+post <- read_excel(raw_data, sheet="post-release performance") %>%
   left_join(coefficients, by="individual")
 
 # Remove duplicated column names
@@ -187,7 +187,7 @@ Finally, we calculated home range as [95% MCPs](https://bit.ly/3lYGxxZ).
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Read in den data
-den <- read_excel(raw_data_filename, sheet="den")
+den <- read_excel(raw_data, sheet="den locations")
 
 # Define column names
 den <- den[, c("Individual", "Easting", "Northing")]
@@ -223,7 +223,7 @@ Here we modelled each of the behavioural responses against observation number, a
 
 ```{r, warning=FALSE, message=FALSE}
 # Read in behavioural assay data
-assay <- read.csv("assays.csv")
+assay <- read.csv("behavioural assays.csv")
 
 # Create a list of behavioural measure names
 dependent <- c("emerge","food","active","vigil", "out","hid","gud","trigpass")
@@ -254,7 +254,7 @@ Here we plot each behavioural response against observation number to visualise t
 
 ```{r, warning=FALSE, message=FALSE}
 # Read in behavioural assay data
-assay <- read_excel(raw_data_filename, sheet="assay")
+assay <- read_excel(raw_data, sheet="behavioural assays")
 
 # Create list of x-axis labels
 xs <- c(14, 14, 14, 14, 14, 14, 14, 14)
