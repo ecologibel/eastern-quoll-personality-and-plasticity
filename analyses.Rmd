@@ -18,7 +18,7 @@ knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = e
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo=TRUE)
 ```
 
 # **Background**
@@ -27,12 +27,12 @@ Personality can play a crucial role in the survival and dispersal of reintroduce
 
 Here we describe the analyses we conducted for our article [Wilson *et al.* (2022) Personality and plasticity predicts post-release performance in a reintroduced mesopredator](https://doi.org/10.1016/j.anbehav.2022.02.019), published in Animal Behaviour.
 
-# **Data preparation**
+# **Setup**
 
 First, we installed the [pacman Package Management Tool](https://cran.r-project.org/web/packages/pacman/index.html), which allows us to install and load subsequent packages in a condensed and efficient way. 
 
 ```{r, eval=FALSE}
-install.packages("pacman")
+#install.packages("pacman")
 ```
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
@@ -48,6 +48,8 @@ We also set the working directly to where this R markdown is saved using the `rs
 # Set the working directory to where this markdown is saved
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 ```
+
+# **Data preparation**
 
 ## Behavioural assays
 
@@ -1072,5 +1074,6 @@ ggsave(filename="effects black.jpeg", effects, width=200, height=225, units="mm"
 # **Session information**
 
 ```{r}
+# Display version information for R, OS, and packages
 sessionInfo()
 ```
