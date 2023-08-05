@@ -12,8 +12,8 @@ output:
     theme: cerulean
     highlight: pygments
 editor_options: 
-  chunk_output_type: console
   
+  chunk_output_type: console
 knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_file = file.path(dirname(inputFile), 'tutorial.html')) })
 ---
 
@@ -84,7 +84,12 @@ Firstly, we needed to scale our behavioural and environmental variables. We inst
 raw_data <- "data.xlsx"
 
 # Read in behavioural assay data
-assay <- read_excel(raw_data, sheet="behavioural assays") %>%
+assay <- read_excel("data.xlsx", sheet="behavioural assays") 
+assay < mutate_at(assay, c(11, 14:20, 26,28, 30:32, 34, 36:37), funs(c(scale(.))))
+write.csv(assay, "behavioural assays.csv")
+
+# Read in behavioural assay data
+assay <- read_excel("data.xlsx", sheet="behavioural assays") %>%
   mutate_at(c(11, 14:20, 26,28, 30:32, 34, 36:37), 
             funs(c(scale(.))))
 write.csv(assay, "behavioural assays.csv")
@@ -1071,9 +1076,3 @@ print(effects)
 ggsave(filename="effects black.jpeg", effects, width=200, height=225, units="mm")
 ```
 
-# **Session information**
-
-```{r}
-# Display version information for R, OS, and packages
-sessionInfo()
-```
