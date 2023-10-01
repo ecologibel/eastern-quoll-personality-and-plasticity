@@ -1,7 +1,7 @@
 ---
 title: "Personality and plasticity predicts post-release performance in a reintroduced mesopredator"
 author: "Wilson B A, Evans M J, Gordon I J, Banks S C, Batson W G, Wimpenny C, Newport J, & Manning A D"
-date: "1 August 2023"
+date: "1 October 2023"
 output:
   html_document:
     toc: true
@@ -37,9 +37,10 @@ First, we installed the [pacman Package Management Tool](https://cran.r-project.
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Install and load required packages
-pacman::p_load(adehabitatHR, brglm, corrplot, factoextra, FactoMineR, ggplot2, 
-               ggpubr, gtools, lme4, magrittr, raster, RColorBrewer, readr,
-               readxl, rstudioapi, tidyverse)
+pacman::p_load(adehabitatHR, brglm, corrplot, factoextra, 
+               FactoMineR, ggplot2, ggpubr, grid, gridExtra, 
+               gtools, lme4, magrittr, raster, RColorBrewer, 
+               readr, readxl, rstudioapi, tidyverse)
 ```
 
 We also set the working directly to where this R markdown is saved using the `rstudioapi` package.
@@ -84,15 +85,15 @@ Firstly, we needed to scale our behavioural and environmental variables. We inst
 raw_data <- "data.xlsx"
 
 # Read in behavioural assay data
-assay <- read_excel("data.xlsx", sheet="behavioural assays") 
+assay <- read_excel(raw_data, sheet="behavioural assays") 
 assay < mutate_at(assay, c(11, 14:20, 26,28, 30:32, 34, 36:37), funs(c(scale(.))))
-write.csv(assay, "behavioural assays.csv")
+write.csv(assay, "processed data/behavioural assays.csv")
 
 # Read in behavioural assay data
-assay <- read_excel("data.xlsx", sheet="behavioural assays") %>%
+assay <- read_excel(raw_data, sheet="behavioural assays") %>%
   mutate_at(c(11, 14:20, 26,28, 30:32, 34, 36:37), 
             funs(c(scale(.))))
-write.csv(assay, "behavioural assays.csv")
+write.csv(assay, "processed data/behavioural assays.csv")
 ```
 
 ### Predict behavioural responses
@@ -147,7 +148,7 @@ post <- read_excel(raw_data, sheet="post-release performance") %>%
 post <- post[ , !duplicated(colnames(post))]
 
 # Write to csv file
-write_csv(post, "postrelease_performance.csv")
+write_csv(post, "processed data/post-release performance.csv")
 ```
 
 ## Post-release data 
@@ -160,7 +161,8 @@ Firstly, we calculate the distance each animal travelled between its release sit
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Read in post-release data
-post <- read_csv("postrelease_performance.csv", col_types=cols())
+post <- read_csv("processed data/post-release performance.csv",
+                 col_types=cols())
 
 # Create release coordinates dataframe
 rcoord <- data.frame(post$release_easting, post$release_northing)
@@ -181,7 +183,7 @@ post <- left_join(first_night, post, by="individual")
 post <- post[ , !duplicated(colnames(post))]
 
 # Write to csv file
-write.csv(post, "postrelease_indices.csv", row.names=FALSE)
+write.csv(post, "processed data/post-release indices.csv", row.names=FALSE)
 ```
 
 ### Mean distance between dens
@@ -200,7 +202,7 @@ den <- read_excel(raw_data, sheet="den locations")
 den <- den[, c("Individual", "Easting", "Northing")]
 
 # Read in post-release data
-post <- read.csv("postrelease_indices.csv")
+post <- read.csv("processed data/post-release indices.csv")
 
 # Create a den coordinates df
 coordinates(den) <- c("Easting", "Northing")
@@ -219,7 +221,7 @@ post <- left_join(post, hr95, by="individual") %>%
   mutate(hr95=area)
 
 # Write to csv file
-write_csv(post, "postrelease_indices.csv")
+write_csv(post, "processed data/post-release indices.csv")
 ```
 
 # **Model behaviour by observation number**
@@ -230,7 +232,7 @@ Here we modelled each of the behavioural responses against observation number, a
 
 ```{r, warning=FALSE, message=FALSE}
 # Read in behavioural assay data
-assay <- read.csv("behavioural assays.csv")
+assay <- read.csv("processed data/behavioural assays.csv")
 
 # Create a list of behavioural measure names
 dependent <- c("emerge","food","active","vigil", "out","hid","gud","trigpass")
@@ -311,10 +313,10 @@ regression <- ggarrange(plotlist=figs, heights=c(3,3,3,3), widths=c(3,3,3,3),
 print(regression)
 ```
 
-```{r, include=FALSE, eval=FALSE}
+```{r, include=FALSE}
 # Save plot to jpeg file
-ggsave(filename="regressions.jpeg", regression, 
-       width=300, height=150, units="mm")
+ggsave(filename="figures/pre-release behaviour regressions.jpeg",
+       regression, width=300, height=150, units="mm")
 ```
 
 # **Correlation analysis**
@@ -323,7 +325,7 @@ Here we conducted a correlation analysis to compare each behavioural measure to 
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Read in post-release data
-cor <- read.csv("postrelease_indices.csv") %>%
+cor <- read.csv("processed data/post-release indices.csv") %>%
   subset(individual!="EQ25") %>%
   # Extract the intercept and slope for all behavioural responses
   dplyr::select(23:38)
@@ -381,7 +383,7 @@ We characterized proactive individuals as those with low time spent vigilant, lo
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Read in post-release data
-post <- read.csv("postrelease_indices.csv") %>%
+post <- read.csv("processed data/post-release indices.csv") %>%
   # Remove one individual that was not released
   subset(individual!="EQ25")
 
@@ -449,7 +451,7 @@ post_pca <- cbind(post, i_pro_quoll, s_pro_quoll,
                   i_rea_quoll, s_rea_quoll, by="individual")
 
 # Write to csv file
-write.csv(post_pca, "postrelease_pca.csv")
+write.csv(post_pca, "processed data/post-release PCAs.csv")
 ```
 
 # **Model behaviour by post-release responses**
@@ -468,7 +470,7 @@ Now that we had generated the intercept (personality) and slope (plasticity) val
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
 # Read in post-release data
-post <- read.csv("postrelease_pca.csv")
+post <- read.csv("processed data/post-release PCAs.csv")
 
 # Create df removing animals that did not survive >7 days
 dispersal <- subset(post, individual!="EQ20" & 
@@ -533,6 +535,8 @@ plotdat <- subset(plotdat, name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)",
                                         "Latency to emerge (min)")))
+fate_pd <- plotdat %>%
+  select(p=Pr...z..)
 ```
 
 ###  Plot
@@ -557,7 +561,8 @@ fig1 <- plot + ggtitle("Fate") +
         axis.line.x = element_line(), 
         text = element_text(size=10, colour="black"),
         plot.title = element_text(hjust=0.5, size=10, face="bold"),
-        axis.text.y = element_text(angle=0, vjust=0.5, colour="black"),
+        axis.text.y = element_text(angle=0, vjust=0.5,
+                                   colour="black"),
         axis.text.x = element_text(angle=0, vjust=0, 
                                  hjust=0.5, colour="black"),
         axis.ticks.y = element_blank(), 
@@ -576,13 +581,6 @@ fig1 <- plot + ggtitle("Fate") +
 
 # Display plot
 print(fig1)
-```
-
-```{r, include=FALSE, eval=FALSE}
-jpeg(filename="fate.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig1)
-dev.off()
 ```
 
 ## Weight 
@@ -628,6 +626,9 @@ plotdat <- subset(plotdat, name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)",
                                         "Latency to emerge (min)")))
+
+weight_pd <- plotdat %>%
+  select(p=Pr...t..)
 ```
 
 ### Plot
@@ -670,14 +671,6 @@ fig2 <- plot + ggtitle("Post-release weight (%)")+
 
 # Display plot
 print(fig2)
-```
-
-```{r, include=FALSE, eval=FALSE}
-# Save plot as jpeg
-jpeg(filename="pr_weight.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig2)
-dev.off()
 ```
 
 ## Number of dens used 
@@ -723,6 +716,9 @@ plotdat <- subset(plotdat,name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)", 
                                         "Latency to emerge (min)")))
+
+dens_pd <- plotdat %>%
+  select(p=Pr...t..)
 ```
 
 ### Plot
@@ -759,16 +755,6 @@ fig3 <- plot + ggtitle("Number of dens used")+
 # Display plot
 print(fig3)
 ```
-
-```{r, include=FALSE, eval=FALSE}
-# Save plot as jpeg
-jpeg(filename="dens_used.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig3)
-dev.off()
-```
-
-<br />
 
 ## Mean distance between dens 
 
@@ -813,6 +799,9 @@ plotdat <- subset(plotdat, name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)",
                                         "Latency to emerge (min)")))
+
+dist_pd <- plotdat %>%
+  select(p=Pr...t..)
 ```
 
 ### Plot
@@ -824,6 +813,9 @@ plot=ggplot(data=plotdat, aes(x=Estimate, y=label,
             ylab="", xlab="Effect size") + theme_bw()
 
 # Plot
+
+names(plotdat)
+
 fig4 <- plot + ggtitle("Mean distance between dens (m)")+
   geom_vline(xintercept=0,linetype=3) +
   geom_errorbarh(height=0.25) +
@@ -849,15 +841,6 @@ fig4 <- plot + ggtitle("Mean distance between dens (m)")+
 # Display plot
 print(fig4)
 ```
-
-```{r, include=FALSE, eval=FALSE}
-# Save plot as jpeg file
-jpeg(filename="mean_dist.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig4)
-dev.off()
-```
-
 
 ## Days spent den sharing
 
@@ -902,6 +885,9 @@ plotdat <- subset(plotdat,name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)", 
                                         "Latency to emerge (min)")))
+
+share_pd <- plotdat %>%
+  select(p=Pr...t..)
 ```
 
 ### Plot
@@ -944,14 +930,6 @@ fig5 <- plot + ggtitle("Days spent den sharing")+
 
 # Display plot
 print(fig5)
-```
-
-```{r, include=FALSE, eval=FALSE}
-# Save plot as jpeg file
-jpeg(filename="den_shared_days.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig5)
-dev.off()
 ```
 
 ## Home range 
@@ -997,6 +975,9 @@ plotdat <- subset(plotdat,name!="(Intercept)") %>%
                                         "Time spent exposed (s)", 
                                         "Latency to reach food (min)", 
                                         "Latency to emerge (min)")))
+
+hr_pd <- plotdat %>%
+  select(p=Pr...t..)
 ```
 
 ### Plot
@@ -1041,14 +1022,6 @@ fig6 <- plot + ggtitle("Home range (95% MCP)")+
 print(fig6)
 ```
 
-```{r, include=FALSE, eval=FALSE}
-# Save plot as jpeg file
-jpeg(filename="hr95.jpeg", 
-     width=7000, height=4300, units="px", res=800)
-print(fig6)
-dev.off()
-```
-
 ## Composite effect size plot 
 
 Finally, we combine the plots created above into a single composite figure.
@@ -1071,8 +1044,360 @@ effects <- annotate_figure(effects,
 print(effects)
 ```
 
-```{r, include=FALSE, eval=FALSE}
+```{r, include=FALSE}
 # Save plot to a jpeg file
-ggsave(filename="effects black.jpeg", effects, width=200, height=225, units="mm")
+ggsave(filename="figures/behaviour by post-release performance effect sizes.jpeg", effects, width=200, height=225, units="mm")
 ```
 
+```{r, include=FALSE}
+# Model summaries
+
+# Fate
+modf_ie <- glm(fate ~i_emerge, data=post, na.action="na.fail")
+modf_se <- glm(fate ~s_emerge, data=post, na.action="na.fail")
+modf_if <- glm(fate ~i_food, data=post, na.action="na.fail")
+modf_ef <- glm(fate ~s_food, data=post, na.action="na.fail")
+modf_io <- glm(fate ~i_out, data=post, na.action="na.fail")
+modf_so <- glm(fate ~s_out, data=post, na.action="na.fail")
+modf_iv <- glm(fate ~i_vigil, data=post, na.action="na.fail")
+modf_sv <- glm(fate ~s_vigil, data=post, na.action="na.fail")
+modf_ig <- glm(fate ~i_gud, data=post, na.action="na.fail")
+modf_sg <- glm(fate ~s_gud, data=post, na.action="na.fail")
+modf_ipp <- glm(fate ~i_pro_pca, data=post, na.action="na.fail")
+modf_spp <- glm(fate ~s_pro_pca, data=post, na.action="na.fail")
+modf_irp <- glm(fate ~i_rea_pca, data=post, na.action="na.fail")
+modf_srp <- glm(fate ~s_rea_pca, data=post, na.action="na.fail")
+
+# Post-release weight (%)
+modw_ie <- glm(pr_weight ~i_emerge, data=post, na.action="na.fail")
+modw_se <- glm(pr_weight ~s_emerge, data=post, na.action="na.fail")
+modw_if <- glm(pr_weight ~i_food, data=post, na.action="na.fail")
+modw_ef <- glm(pr_weight ~s_food, data=post, na.action="na.fail")
+modw_io <- glm(pr_weight ~i_out, data=post, na.action="na.fail")
+modw_so <- glm(pr_weight ~s_out, data=post, na.action="na.fail")
+modw_iv <- glm(pr_weight ~i_vigil, data=post, na.action="na.fail")
+modw_sv <- glm(pr_weight ~s_vigil, data=post, na.action="na.fail")
+modw_ig <- glm(pr_weight ~i_gud, data=post, na.action="na.fail")
+modw_sg <- glm(pr_weight ~s_gud, data=post, na.action="na.fail")
+modw_ipp <- glm(pr_weight ~i_pro_pca, data=post, na.action="na.fail")
+modw_spp <- glm(pr_weight ~s_pro_pca, data=post, na.action="na.fail")
+modw_irp <- glm(pr_weight ~i_rea_pca, data=post, na.action="na.fail")
+modw_srp <- glm(pr_weight ~s_rea_pca, data=post, na.action="na.fail")
+
+# Number of dens
+modd_ie <- glm(dens_used ~i_emerge, data=post, na.action="na.fail")
+modd_se <- glm(dens_used ~s_emerge, data=post, na.action="na.fail")
+modd_if <- glm(dens_used ~i_food, data=post, na.action="na.fail")
+modd_ef <- glm(dens_used ~s_food, data=post, na.action="na.fail")
+modd_io <- glm(dens_used ~i_out, data=post, na.action="na.fail")
+modd_so <- glm(dens_used ~s_out, data=post, na.action="na.fail")
+modd_iv <- glm(dens_used ~i_vigil, data=post, na.action="na.fail")
+modd_sv <- glm(dens_used ~s_vigil, data=post, na.action="na.fail")
+modd_ig <- glm(dens_used ~i_gud, data=post, na.action="na.fail")
+modd_sg <- glm(dens_used ~s_gud, data=post, na.action="na.fail")
+modd_ipp <- glm(dens_used ~i_pro_pca, data=post, na.action="na.fail")
+modd_spp <- glm(dens_used ~s_pro_pca, data=post, na.action="na.fail")
+modd_irp <- glm(dens_used ~i_rea_pca, data=post, na.action="na.fail")
+modd_srp <- glm(dens_used ~s_rea_pca, data=post, na.action="na.fail")
+
+# Mean distance between dens
+modm_ie <- glm(mean_dist ~i_emerge, data=post, na.action="na.omit")
+modm_se <- glm(mean_dist ~s_emerge, data=post, na.action="na.omit")
+modm_if <- glm(mean_dist ~i_food, data=post, na.action="na.omit")
+modm_ef <- glm(mean_dist ~s_food, data=post, na.action="na.omit")
+modm_io <- glm(mean_dist ~i_out, data=post, na.action="na.omit")
+modm_so <- glm(mean_dist ~s_out, data=post, na.action="na.omit")
+modm_iv <- glm(mean_dist ~i_vigil, data=post, na.action="na.omit")
+modm_sv <- glm(mean_dist ~s_vigil, data=post, na.action="na.omit")
+modm_ig <- glm(mean_dist ~i_gud, data=post, na.action="na.omit")
+modm_sg <- glm(mean_dist ~s_gud, data=post, na.action="na.omit")
+modm_ipp <- glm(mean_dist ~i_pro_pca, data=post, na.action="na.omit")
+modm_spp <- glm(mean_dist ~s_pro_pca, data=post, na.action="na.omit")
+modm_irp <- glm(mean_dist ~i_rea_pca, data=post, na.action="na.omit")
+modm_srp <- glm(mean_dist ~s_rea_pca, data=post, na.action="na.omit")
+
+# Days spent den sharing
+mods_ie <- glm(den_shared_days ~i_emerge, data=post, na.action="na.fail")
+mods_se <- glm(den_shared_days ~s_emerge, data=post, na.action="na.fail")
+mods_if <- glm(den_shared_days ~i_food, data=post, na.action="na.fail")
+mods_ef <- glm(den_shared_days ~s_food, data=post, na.action="na.fail")
+mods_io <- glm(den_shared_days ~i_out, data=post, na.action="na.fail")
+mods_so <- glm(den_shared_days ~s_out, data=post, na.action="na.fail")
+mods_iv <- glm(den_shared_days ~i_vigil, data=post, na.action="na.fail")
+mods_sv <- glm(den_shared_days ~s_vigil, data=post, na.action="na.fail")
+mods_ig <- glm(den_shared_days ~i_gud, data=post, na.action="na.fail")
+mods_sg <- glm(den_shared_days ~s_gud, data=post, na.action="na.fail")
+mods_ipp <- glm(den_shared_days ~i_pro_pca, data=post, na.action="na.fail")
+mods_spp <- glm(den_shared_days ~s_pro_pca, data=post, na.action="na.fail")
+mods_irp <- glm(den_shared_days ~i_rea_pca, data=post, na.action="na.fail")
+mods_srp <- glm(den_shared_days ~s_rea_pca, data=post, na.action="na.fail")
+
+# Home range (95% MCP)
+modh_ie <- glm(hr95 ~i_emerge, data=post, na.action="na.omit")
+modh_se <- glm(hr95 ~s_emerge, data=post, na.action="na.omit")
+modh_if <- glm(hr95 ~i_food, data=post, na.action="na.omit")
+modh_ef <- glm(hr95 ~s_food, data=post, na.action="na.omit")
+modh_io <- glm(hr95 ~i_out, data=post, na.action="na.omit")
+modh_so <- glm(hr95 ~s_out, data=post, na.action="na.omit")
+modh_iv <- glm(hr95 ~i_vigil, data=post, na.action="na.omit")
+modh_sv <- glm(hr95 ~s_vigil, data=post, na.action="na.omit")
+modh_ig <- glm(hr95 ~i_gud, data=post, na.action="na.omit")
+modh_sg <- glm(hr95 ~s_gud, data=post, na.action="na.omit")
+modh_ipp <- glm(hr95 ~i_pro_pca, data=post, na.action="na.omit")
+modh_spp <- glm(hr95 ~s_pro_pca, data=post, na.action="na.omit")
+modh_irp <- glm(hr95 ~i_rea_pca, data=post, na.action="na.omit")
+modh_srp <- glm(hr95 ~s_rea_pca, data=post, na.action="na.omit")
+
+table <- data.frame("Behavioural response"=c(" ", 
+                    "Latency to emerge (min)",
+                    " ", "Latency to reach food (min)", 
+                    " ", "Time spent exposed (s)",  
+                    " ", "Time spent vigilant (s)",
+                    " ", "Giving-up-density", 
+                    " ", "Proactive PC",
+                    " ", "Reactive PC", " "),
+  "Coefficient"=c(" ", "Intercept", "Slope", 
+                  "Intercept", "Slope", 
+                  "Intercept", "Slope", 
+                  "Intercept", "Slope", 
+                  "Intercept", "Slope", 
+                  "Intercept", "Slope", 
+                  "Intercept", "Slope"),
+  "Fate"=c("Likelihood-ratio χ2",
+           car::Anova(modf_ie)[[1]], 
+           car::Anova(modf_se)[[1]], 
+           car::Anova(modf_if)[[1]], 
+           car::Anova(modf_ef)[[1]],
+           car::Anova(modf_io)[[1]],
+           car::Anova(modf_so)[[1]], 
+           car::Anova(modf_iv)[[1]], 
+           car::Anova(modf_sv)[[1]], 
+           car::Anova(modf_ig)[[1]],
+           car::Anova(modf_sg)[[1]],
+           car::Anova(modf_ipp)[[1]], 
+           car::Anova(modf_spp)[[1]], 
+           car::Anova(modf_irp)[[1]], 
+           car::Anova(modf_srp)[[1]]),
+  "←"=c("Residual deviance",
+           unlist(anova(modf_ie))[[8]], 
+           unlist(anova(modf_se))[[8]], 
+           unlist(anova(modf_if))[[8]], 
+           unlist(anova(modf_ef))[[8]],
+           unlist(anova(modf_io))[[8]],
+           unlist(anova(modf_so))[[8]], 
+           unlist(anova(modf_iv))[[8]], 
+           unlist(anova(modf_sv))[[8]], 
+           unlist(anova(modf_ig))[[8]],
+           unlist(anova(modf_sg))[[8]],
+           unlist(anova(modf_ipp))[[8]], 
+           unlist(anova(modf_spp))[[8]], 
+           unlist(anova(modf_irp))[[8]], 
+           unlist(anova(modf_srp))[[8]]),
+  "←"=c("p-value",
+        fate_pd$p[1], fate_pd$p[2], 
+        fate_pd$p[3], fate_pd$p[4], 
+        fate_pd$p[5], fate_pd$p[6], 
+        fate_pd$p[7], fate_pd$p[8], 
+        fate_pd$p[9], fate_pd$p[10], 
+        fate_pd$p[11], fate_pd$p[12], 
+        fate_pd$p[13],fate_pd$p[14]),
+  "Post-release weight (%)"=c("Likelihood-ratio",
+           car::Anova(modw_ie)[[1]], 
+           car::Anova(modw_se)[[1]], 
+           car::Anova(modw_if)[[1]], 
+           car::Anova(modw_ef)[[1]],
+           car::Anova(modw_io)[[1]],
+           car::Anova(modw_so)[[1]], 
+           car::Anova(modw_iv)[[1]], 
+           car::Anova(modw_sv)[[1]], 
+           car::Anova(modw_ig)[[1]],
+           car::Anova(modw_sg)[[1]],
+           car::Anova(modw_ipp)[[1]], 
+           car::Anova(modw_spp)[[1]], 
+           car::Anova(modw_irp)[[1]], 
+           car::Anova(modw_srp)[[1]]),
+  "←"=c("Residual deviance",
+           unlist(anova(modw_ie))[[8]], 
+           unlist(anova(modw_se))[[8]], 
+           unlist(anova(modw_if))[[8]], 
+           unlist(anova(modw_ef))[[8]],
+           unlist(anova(modw_io))[[8]],
+           unlist(anova(modw_so))[[8]], 
+           unlist(anova(modw_iv))[[8]], 
+           unlist(anova(modw_sv))[[8]], 
+           unlist(anova(modw_ig))[[8]],
+           unlist(anova(modw_sg))[[8]],
+           unlist(anova(modw_ipp))[[8]], 
+           unlist(anova(modw_spp))[[8]], 
+           unlist(anova(modw_irp))[[8]], 
+           unlist(anova(modw_srp))[[8]]),
+  "←"=c("p-value",
+        weight_pd$p[1], weight_pd$p[2], 
+        weight_pd$p[3], weight_pd$p[4], 
+        weight_pd$p[5], weight_pd$p[6], 
+        weight_pd$p[7], weight_pd$p[8], 
+        weight_pd$p[9], weight_pd$p[10], 
+        weight_pd$p[11], weight_pd$p[12], 
+        weight_pd$p[13], weight_pd$p[14]),
+  "Number of dens"=c("Likelihood-ratio",
+           car::Anova(modd_ie)[[1]], 
+           car::Anova(modd_se)[[1]], 
+           car::Anova(modd_if)[[1]], 
+           car::Anova(modd_ef)[[1]],
+           car::Anova(modd_io)[[1]],
+           car::Anova(modd_so)[[1]], 
+           car::Anova(modd_iv)[[1]], 
+           car::Anova(modd_sv)[[1]], 
+           car::Anova(modd_ig)[[1]],
+           car::Anova(modd_sg)[[1]],
+           car::Anova(modd_ipp)[[1]], 
+           car::Anova(modd_spp)[[1]], 
+           car::Anova(modd_irp)[[1]], 
+           car::Anova(modd_srp)[[1]]),
+  "←"=c("Residual deviance",
+           unlist(anova(modd_ie))[[8]], 
+           unlist(anova(modd_se))[[8]], 
+           unlist(anova(modd_if))[[8]], 
+           unlist(anova(modd_ef))[[8]],
+           unlist(anova(modd_io))[[8]],
+           unlist(anova(modd_so))[[8]], 
+           unlist(anova(modd_iv))[[8]], 
+           unlist(anova(modd_sv))[[8]], 
+           unlist(anova(modd_ig))[[8]],
+           unlist(anova(modd_sg))[[8]],
+           unlist(anova(modd_ipp))[[8]], 
+           unlist(anova(modd_spp))[[8]], 
+           unlist(anova(modd_irp))[[8]], 
+           unlist(anova(modd_srp))[[8]]),
+  "←"=c("p-value",
+        dens_pd$p[1], dens_pd$p[2], 
+        dens_pd$p[3], dens_pd$p[4], 
+        dens_pd$p[5], dens_pd$p[6], 
+        dens_pd$p[7], dens_pd$p[8], 
+        dens_pd$p[9], dens_pd$p[10], 
+        dens_pd$p[11], dens_pd$p[12], 
+        dens_pd$p[13], dens_pd$p[14]),
+  "Mean distance between dens (m)"=c("Likelihood-ratio χ2",
+           car::Anova(modm_ie)[[1]], 
+           car::Anova(modm_se)[[1]], 
+           car::Anova(modm_if)[[1]], 
+           car::Anova(modm_ef)[[1]],
+           car::Anova(modm_io)[[1]],
+           car::Anova(modm_so)[[1]], 
+           car::Anova(modm_iv)[[1]], 
+           car::Anova(modm_sv)[[1]], 
+           car::Anova(modm_ig)[[1]],
+           car::Anova(modm_sg)[[1]],
+           car::Anova(modm_ipp)[[1]], 
+           car::Anova(modm_spp)[[1]], 
+           car::Anova(modm_irp)[[1]], 
+           car::Anova(modm_srp)[[1]]),
+  "←"=c("Residual deviance",
+           unlist(anova(modm_ie))[[8]], 
+           unlist(anova(modm_se))[[8]], 
+           unlist(anova(modm_if))[[8]], 
+           unlist(anova(modm_ef))[[8]],
+           unlist(anova(modm_io))[[8]],
+           unlist(anova(modm_so))[[8]], 
+           unlist(anova(modm_iv))[[8]], 
+           unlist(anova(modm_sv))[[8]], 
+           unlist(anova(modm_ig))[[8]],
+           unlist(anova(modm_sg))[[8]],
+           unlist(anova(modm_ipp))[[8]], 
+           unlist(anova(modm_spp))[[8]], 
+           unlist(anova(modm_irp))[[8]], 
+           unlist(anova(modm_srp))[[8]]),
+  "←"=c("p-value",
+        dist_pd$p[1], dist_pd$p[2], 
+        dist_pd$p[3], dist_pd$p[4], 
+        dist_pd$p[5], dist_pd$p[6], 
+        dist_pd$p[7], dist_pd$p[8], 
+        dist_pd$p[9], dist_pd$p[10], 
+        dist_pd$p[11], dist_pd$p[12], 
+        dist_pd$p[13], dist_pd$p[14]),
+  "Days spent den sharing"=c("Likelihood-ratio χ2",
+           car::Anova(mods_ie)[[1]], 
+           car::Anova(mods_se)[[1]], 
+           car::Anova(mods_if)[[1]], 
+           car::Anova(mods_ef)[[1]],
+           car::Anova(mods_io)[[1]],
+           car::Anova(mods_so)[[1]], 
+           car::Anova(mods_iv)[[1]], 
+           car::Anova(mods_sv)[[1]], 
+           car::Anova(mods_ig)[[1]],
+           car::Anova(mods_sg)[[1]],
+           car::Anova(mods_ipp)[[1]], 
+           car::Anova(mods_spp)[[1]], 
+           car::Anova(mods_irp)[[1]], 
+           car::Anova(mods_srp)[[1]]), 
+  "←"=c("Residual deviance",
+           unlist(anova(mods_ie))[[8]], 
+           unlist(anova(mods_se))[[8]], 
+           unlist(anova(mods_if))[[8]], 
+           unlist(anova(mods_ef))[[8]],
+           unlist(anova(mods_io))[[8]],
+           unlist(anova(mods_so))[[8]], 
+           unlist(anova(mods_iv))[[8]], 
+           unlist(anova(mods_sv))[[8]], 
+           unlist(anova(mods_ig))[[8]],
+           unlist(anova(mods_sg))[[8]],
+           unlist(anova(mods_ipp))[[8]], 
+           unlist(anova(mods_spp))[[8]], 
+           unlist(anova(mods_irp))[[8]], 
+           unlist(anova(mods_srp))[[8]]),
+  "-"=c("p-value",
+        share_pd$p[1], share_pd$p[2], 
+        share_pd$p[3], share_pd$p[4], 
+        share_pd$p[5], share_pd$p[6], 
+        share_pd$p[7], share_pd$p[8], 
+        share_pd$p[9], share_pd$p[10], 
+        share_pd$p[11], share_pd$p[12], 
+        share_pd$p[13], share_pd$p[14]),
+  "Home range (95% MCP)"=c("Likelihood-ratio χ2",
+           car::Anova(modh_ie)[[1]], 
+           car::Anova(modh_se)[[1]], 
+           car::Anova(modh_if)[[1]], 
+           car::Anova(modh_ef)[[1]],
+           car::Anova(modh_io)[[1]],
+           car::Anova(modh_so)[[1]], 
+           car::Anova(modh_iv)[[1]], 
+           car::Anova(modh_sv)[[1]], 
+           car::Anova(modh_ig)[[1]],
+           car::Anova(modh_sg)[[1]],
+           car::Anova(modh_ipp)[[1]], 
+           car::Anova(modh_spp)[[1]], 
+           car::Anova(modh_irp)[[1]], 
+           car::Anova(modh_srp)[[1]]),
+  "←"=c("Residual deviance",
+           unlist(anova(modh_ie))[[8]], 
+           unlist(anova(modh_se))[[8]], 
+           unlist(anova(modh_if))[[8]], 
+           unlist(anova(modh_ef))[[8]],
+           unlist(anova(modh_io))[[8]],
+           unlist(anova(modh_so))[[8]], 
+           unlist(anova(modh_iv))[[8]], 
+           unlist(anova(modh_sv))[[8]], 
+           unlist(anova(modh_ig))[[8]],
+           unlist(anova(modh_sg))[[8]],
+           unlist(anova(modh_ipp))[[8]], 
+           unlist(anova(modh_spp))[[8]], 
+           unlist(anova(modh_irp))[[8]], 
+           unlist(anova(modh_srp))[[8]]),
+    "←"=c("p-value",
+        hr_pd$p[1], hr_pd$p[2], 
+        hr_pd$p[3], hr_pd$p[4], 
+        hr_pd$p[5], hr_pd$p[6], 
+        hr_pd$p[7], hr_pd$p[8], 
+        hr_pd$p[9], hr_pd$p[10], 
+        hr_pd$p[11], hr_pd$p[12], 
+        hr_pd$p[13], hr_pd$p[14]))
+
+write.csv(table, "processed data/table.csv", row.names=FALSE)
+```
+
+# **Session information**
+
+```{r}
+# Display version information for R, OS, and packages
+sessionInfo()
+```
